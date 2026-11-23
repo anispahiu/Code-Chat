@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+/.codegraph/
+/data/
+/node_modules/
