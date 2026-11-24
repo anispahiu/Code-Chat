@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Admin · Code Chat</title>
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/admin.js" type="module"></script>
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <div class="admin-brand">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Code Chat</div>
+      <span class="badge">Admin</span>
+    </div>
+    <nav class="admin-tabs" aria-label="Admin sections">
+      <button type="button" class="tab-button" data-tab="clients" aria-current="page">Clients</button>
+      <button type="button" class="tab-button" data-tab="projects">Projects</button>
+      <button type="button" class="tab-button" data-tab="history">History</button>
+    </nav>
+    <div class="admin-header-actions">
+      <span class="admin-user" id="admin-email"></span>
+      <button type="button" class="outline compact" id="theme-toggle" hidden>Light mode</button>
+      <form method="post" action="/api/logout">
+        <button type="submit" class="outline compact">Sign out</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <p id="admin-notice" class="notice" role="status"></p>
+
+    <section class="admin-panel" id="tab-clients" aria-labelledby="clients-heading">
+      <div class="panel-header">
+        <div>
+          <h1 id="clients-heading">Client &amp; Admin Accounts</h1>
+          <p class="panel-subtitle">Create accounts, edit details, reset passwords, or disable access.</p>
+        </div>
+      </div>
+
+      <section class="password-banner" id="password-banner" role="alert" hidden>
+        <div class="password-banner-text">
+          <strong id="password-banner-title">One-time password generated</strong>
+          <p>Share this password through a secure channel. It will not be shown again.</p>
+          <div class="password-row">
+            <code id="password-value"></code>
+            <button type="button" class="outline compact" id="copy-password">Copy password</button>
+            <button type="button" class="text-button compact" id="dismiss-password">Dismiss</button>
+          </div>
+        </div>
+      </section>
+
+      <form id="create-user-form" class="card inline-form" aria-label="Create account">
+        <h2>Create account</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label for="new-user-name">Name</label>
+            <input id="new-user-name" name="name" type="text" maxlength="120" placeholder="Optional display name">
+          </div>
+          <div class="field">
+            <label for="new-user-email">Email address</label>
+            <input id="new-user-email" name="email" type="email" maxlength="254" required placeholder="client@example.com">
+          </div>
+          <div class="field">
+            <label for="new-user-role">Role</label>
+            <select id="new-user-role" name="role">
+              <option value="client" selected>Client</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary compact" id="create-user-submit">Create account</button>
+        </div>
+      </form>
+
+      <form id="edit-user-form" class="card inline-form" aria-label="Edit account" hidden>
+        <h2 id="edit-user-heading">Edit account</h2>
+        <input type="hidden" id="edit-user-id" name="id">
+        <div class="form-grid">
+          <div class="field">
+            <label for="edit-user-name">Name</label>
+            <input id="edit-user-name" name="name" type="text" maxlength="120">
+          </div>
+          <div class="field">
+            <label for="edit-user-email">Email address</label>
+            <input id="edit-user-email" name="email" type="email" maxlength="254" required>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary compact">Save changes</button>
+          <button type="button" class="outline compact" id="cancel-edit-user">Cancel</button>
+        </div>
+      </form>
+
+      <form id="assign-projects-form" class="card inline-form" aria-label="Assign projects" hidden>
+        <h2 id="assign-projects-heading">Assign projects</h2>
+        <input type="hidden" id="assign-user-id">
+        <div id="assign-projects-list" class="checkbox-grid"></div>
+        <p id="assign-projects-empty" class="panel-subtitle" hidden>Add projects in the Projects tab first.</p>
+        <div class="form-actions">
+          <button type="submit" class="button primary compact" id="save-assignments">Save assignments</button>
+          <button type="button" class="outline compact" id="cancel-assignments">Cancel</button>
+        </div>
+      </form>
+
+      <div class="card table-card">
+        <table class="data-table" aria-label="Accounts">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Projects</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+        <p id="users-empty" class="empty-state" hidden>No accounts found.</p>
+      </div>
+    </section>
+
+    <section class="admin-panel" id="tab-projects" aria-labelledby="projects-heading" hidden>
+      <div class="panel-header">
+        <div>
+          <h1 id="projects-heading">Projects &amp; CodeGraph Indexing</h1>
+          <p class="panel-subtitle">Register project directories under PROJECTS_BASE_DIR and manage their CodeGraph index.</p>
+        </div>
+      </div>
+
+      <form id="create-project-form" class="card inline-form" aria-label="Create project">
+        <h2>Add project</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label for="new-project-name">Project name</label>
+            <input id="new-project-name" name="name" type="text" maxlength="120" required placeholder="Acme Web App">
+          </div>
+          <div class="field">
+            <label for="new-project-path">Relative path</label>
+            <input id="new-project-path" name="relativePath" type="text" maxlength="255" required placeholder="acme-web-app">
+          </div>
+          <div class="field">
+            <label for="new-project-desc">Description</label>
+            <input id="new-project-desc" name="description" type="text" maxlength="500" placeholder="Optional short summary">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary compact" id="create-project-submit">Add project</button>
+        </div>
+      </form>
+
+      <form id="edit-project-form" class="card inline-form" aria-label="Edit project" hidden>
+        <h2 id="edit-project-heading">Edit project</h2>
+        <input type="hidden" id="edit-project-id" name="id">
+        <div class="form-grid">
+          <div class="field">
+            <label for="edit-project-name">Project name</label>
+            <input id="edit-project-name" name="name" type="text" maxlength="120" required>
+          </div>
+          <div class="field">
+            <label for="edit-project-path">Relative path</label>
+            <input id="edit-project-path" name="relativePath" type="text" maxlength="255" required>
+          </div>
+          <div class="field">
+            <label for="edit-project-desc">Description</label>
+            <input id="edit-project-desc" name="description" type="text" maxlength="500">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary compact">Save changes</button>
+          <button type="button" class="outline compact" id="cancel-edit-project">Cancel</button>
+        </div>
+      </form>
+
+      <section id="delete-project-panel" class="card inline-form danger-card" aria-labelledby="delete-project-heading" hidden>
+        <h2 id="delete-project-heading">Delete project</h2>
+        <p id="delete-project-summary" class="panel-subtitle"></p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="delete-project-chats">
+          <span>Also delete all conversation history for this project (cannot be undone)</span>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="button danger compact" id="confirm-delete-project">Delete project</button>
+          <button type="button" class="outline compact" id="cancel-delete-project">Cancel</button>
+        </div>
+      </section>
+
+      <div id="projects-list" class="project-cards"></div>
+      <p id="projects-empty" class="empty-state card" hidden>No projects registered yet.</p>
+    </section>
+
+    <section class="admin-panel" id="tab-history" aria-labelledby="history-heading" hidden>
+      <div class="panel-header">
+        <div>
+          <h1 id="history-heading">Conversation History</h1>
+          <p class="panel-subtitle">Inspect full read-only client conversations filtered by client and project.</p>
+        </div>
+      </div>
+
+      <div class="card history-filters" role="search" aria-label="Filter conversations">
+        <div class="form-grid">
+          <div class="field">
+            <label for="history-filter-user">Client</label>
+            <select id="history-filter-user">
+              <option value="">All clients</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="history-filter-project">Project</label>
+            <select id="history-filter-project">
+              <option value="">All projects</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-browser">
+        <div class="card history-list-pane">
+          <p id="admin-chats-empty" class="empty-state" hidden>No conversations match the current filters.</p>
+          <ul id="admin-chats-list" class="admin-chats-list"></ul>
+        </div>
+        <div class="card history-transcript-pane" aria-live="polite">
+          <p id="admin-transcript-placeholder" class="empty-state">Select a conversation to view its full read-only transcript.</p>
+          <div id="admin-transcript-view" hidden>
+            <header class="transcript-header">
+              <h2 id="admin-transcript-title"></h2>
+              <div id="admin-transcript-meta" class="project-badges"></div>
+            </header>
+            <ol id="admin-transcript-messages" class="messages admin-messages"></ol>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

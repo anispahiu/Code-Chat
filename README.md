@@ -1,19 +1,14 @@
 # Code Chat
 
-Code Chat gives clients a private place to ask how your application works. Every answer starts with a local CodeGraph lookup. OpenAI or Gemini uses the results to explain workflows, features, and business rules in everyday language.
+Code Chat gives clients a private place to ask how their assigned applications work. Every answer starts with a local CodeGraph lookup (`codegraph_explore`), and OpenAI or Gemini uses the results to explain workflows, features, and business rules in everyday language.
 
-The app uses Node.js, SQLite, and plain HTML, CSS, and JavaScript. It uses markdown-it to format replies and the separately installed CodeGraph executable. There is no build step.
+The app uses Node.js, built-in `node:sqlite`, and plain HTML, CSS, and JavaScript. It uses pinned `markdown-it` to format replies safely and the separately installed CodeGraph CLI (`>=1.6.3`). There is no build step.
 
 ## Run locally
 
-Use Node.js **22.16 or later**, Git, and the [CodeGraph CLI](https://github.com/colbymchenry/codegraph) on your `PATH`. If CodeGraph is installed in a different location, set `CODEGRAPH_BIN` to the absolute path of its executable. The integration was developed against CodeGraph 1.6.3.
+Use Node.js **22.16 or later**, Git, and the [CodeGraph CLI](https://github.com/colbymchenry/codegraph) on your `PATH`. If CodeGraph is installed in a different location, set `CODEGRAPH_BIN` to the absolute path of its executable.
 
-1. Initialize CodeGraph in the private repository you want clients to ask about. Run this under the account that will run Code Chat.
-
-   ```sh
-   codegraph init --yes --local-only /srv/private-repo
-   codegraph status /srv/private-repo
-   ```
+1. Place the repositories you want to manage inside one parent directory (for example `/srv/projects/acme-app`, `/srv/projects/billing-portal`).
 
 2. From this app's directory, create a private configuration file.
 
@@ -21,30 +16,46 @@ Use Node.js **22.16 or later**, Git, and the [CodeGraph CLI](https://github.com/
    install -m 600 .env.example .env
    ```
 
-   Set `REPO_PATH` to the indexed checkout. Choose a provider and set its key.
+   Set `PROJECTS_BASE_DIR` to the parent directory containing your projects. Choose an LLM provider and set its key:
 
    | Setting | Value |
    | --- | --- |
-   | `LLM_PROVIDER=openai` | Set `OPENAI_API_KEY`. The default model is `gpt-4.1-mini`. |
-   | `LLM_PROVIDER=gemini` | Set `GEMINI_API_KEY`. The default model is `gemini-3.5-flash-lite`. |
+   | `LLM_PROVIDER=openai` | Set `OPENAI_API_KEY`. The default model is `gpt-4.1-mini` (used for both guardrail classification and chat answers). |
+   | `LLM_PROVIDER=gemini` | Set `GEMINI_API_KEY`. The default chat model is `gemini-3.5-flash-lite`; guardrail classification is routed to `gemini-decision-1` (not `LLM_MODEL`). |
 
-   Set `LLM_MODEL` to override the default with a model that supports function calling. By default, `DATABASE_PATH` is `./data/code-chat.sqlite` and the server listens at `127.0.0.1:3000`. Both npm commands load `.env` from the app directory. Existing process environment values take precedence.
+   Set `LLM_MODEL` to override the chat model with one that supports function calling. When `LLM_PROVIDER=openai`, guardrail checks run against that selected OpenAI `LLM_MODEL`; when `LLM_PROVIDER=gemini`, guardrail classification routes to `gemini-decision-1` instead of `LLM_MODEL` (override with `GEMINI_GUARDRAIL_MODEL` only if needed). By default, `DATABASE_PATH` is `./data/code-chat.sqlite` and the server listens at `127.0.0.1:3000`. Optional MCP pool tuning: `CODEGRAPH_MCP_MAX_WORKERS` (default `4`) and `CODEGRAPH_MCP_IDLE_MS` (default `600000` / 10 minutes).
 
-3. Create a client account and start the app.
+3. Install dependencies, bootstrap your first admin account, and start the app.
 
    ```sh
    npm ci
-   npm run create-user -- client@example.com
+   npm run create-user -- --admin admin@example.com --name "Site Admin"
    npm start
    ```
 
-   The command prints a generated password once. Share it with the client through a secure channel. Run the command again with a different email for each client. Open [http://127.0.0.1:3000](http://127.0.0.1:3000) and sign in. If you change the browser URL, set `APP_ORIGIN` to match it exactly, including any non-default port.
+   The CLI prints a generated password once. Open [http://127.0.0.1:3000/login](http://127.0.0.1:3000/login) and sign in as the admin to land on `/admin`. If you change the browser URL, set `APP_ORIGIN` to match it exactly, including any non-default port.
+
+   Other CLI forms:
+   ```sh
+   npm run create-user -- client@example.com --name "Client Name"
+   npm run create-user -- --promote-admin existing@example.com
+   ```
+
+## Admin & Client Workflow
+
+- **Admin (`/admin`)**:
+  - **Clients**: create client or admin accounts (one-time generated password), edit display name/email, reset passwords (immediately signing out active sessions), enable/disable accounts (immediately invalidating sessions), and assign projects to clients.
+  - **Projects**: add projects using paths relative to `PROJECTS_BASE_DIR` (validated with `realpath` containment—`..` traversal and escaping symlinks are rejected), inspect `codegraph status`, and trigger asynchronous `codegraph init --yes --local-only` or `codegraph sync` with per-project locking and live log output. Deleting a project keeps its conversation history in Admin History by default unless **"Also delete all conversation history for this project"** is checked.
+  - **History**: inspect full read-only client conversations filterable by client and project (including revoked-access and deleted-project retained threads). Admins cannot send chat messages.
+- **Clients (`/`)**:
+  - After signing in, clients pick one of their assigned projects from the top of the collapsible left sidebar, browse that project's conversation threads, and start or continue chats scoped to that project.
+  - Only indexed projects can be queried. Revoking a project or disabling a client account takes effect immediately.
 
 ## Deploy on a VPS
 
-Run one app process under a dedicated, unprivileged account with read access to the repository and write access to its `.codegraph/` directory and the SQLite directory. Use a persistent local disk for `DATABASE_PATH`. Run the account-creation command from the same app directory as that account so it uses the same database.
+Run one app process under a dedicated, unprivileged account with read access to the repositories under `PROJECTS_BASE_DIR` and write access to each repository's `.codegraph/` directory and the SQLite directory. Use a persistent local disk for `DATABASE_PATH`.
 
-Keep the Node server on loopback and put it behind an HTTPS reverse proxy. For example, point `chat.example.com` at the VPS and configure Caddy.
+Keep the Node server on loopback and put it behind an HTTPS reverse proxy (for example Caddy):
 
 ```caddyfile
 chat.example.com {
@@ -52,9 +63,9 @@ chat.example.com {
 }
 ```
 
-Set `APP_ORIGIN=https://chat.example.com` in `.env`. This enables secure session cookies and allows form submissions from that origin.
+Set `APP_ORIGIN=https://chat.example.com` in `.env` to enable `__Host-codechat` secure cookies, HSTS, and strict `Origin` checks on all state-changing requests.
 
-To keep the app running after reboots, use a process supervisor. This example assumes system-wide Node and CodeGraph binaries. Adjust the user and paths to match your install.
+Example systemd unit (`/etc/systemd/system/code-chat.service`):
 
 ```ini
 [Unit]
@@ -73,38 +84,58 @@ TimeoutStopSec=120
 WantedBy=multi-user.target
 ```
 
-Save it as `/etc/systemd/system/code-chat.service`, then run `sudo systemctl daemon-reload` and `sudo systemctl enable --now code-chat`.
+Code Chat lazy-starts per-project CodeGraph MCP workers with file watching enabled by default, evicts idle or least-recently-used workers to keep memory bounded, stops a project's worker before admin `init`/`sync`/delete, and shuts down all workers and SQLite cleanly on `SIGTERM`/`SIGINT`.
 
-Update the target checkout with `git -C /srv/private-repo pull --ff-only`. Code Chat keeps a CodeGraph MCP process open with file watching enabled. Give the watcher a moment to index the changed files. To check the index, use `codegraph status /srv/private-repo`. If a manual catch-up is needed, run `codegraph sync /srv/private-repo` under the same service account.
+## Testing
 
-## Data and access
+Run the automated test suite with Node 22.16+:
 
-- Account creation is a server-side CLI operation. Passwords are salted and hashed with scrypt. Browser sessions expire after seven days and can be ended early by signing out.
-- Each account sees only its own conversation history. All accounts on one instance ask about the same `REPO_PATH`. Give access to clients authorized to learn about that repository.
-- Questions are saved before generation. If an answer fails, the client can retry the latest unanswered question from the same conversation. Successful answers are appended alongside questions. The app has no edit or delete UI or API for chats or messages. SQLite triggers reject updates and deletes on both tables.
-- The model receives the current question, up to seven preceding answered turns, and relevant source excerpts returned by CodeGraph. Keep secrets and data files out of the target checkout. Provider data-handling terms apply to the material sent to the provider. Use an indexed checkout approved for that transfer.
-- Back up SQLite regularly to retain permanent history after disk failure or migration. Use SQLite's backup command while the app is running. For a filesystem copy, stop the app and all other database writers first.
+```sh
+npm test
+```
+
+## Data and Security
+
+- Passwords use scrypt hashing with random salts and constant-time verification; 7-day sessions are SHA-256 hashed in SQLite (`HttpOnly; SameSite=Strict`).
+- All non-`GET`/`HEAD` requests must match `APP_ORIGIN` exactly (`403` otherwise). Strict CSP disallows inline scripts and styles.
+- CodeGraph CLI commands run via `spawn`/`execFile` (`shell: false`) with a minimal environment (LLM API keys are never passed to CodeGraph).
+- Questions are saved before generation with idempotent `requestId` and retry for the latest unanswered question; the model receives up to seven prior answered turns plus CodeGraph evidence.
+- **Guardrails**: Client questions pass through multi-layer guardrails that block code/script/SQL generation, code or database editing requests, source/secret extraction, prompt injection, and off-topic requests:
+  - Fast server-side input filter blocks obvious disallowed requests before calling CodeGraph or the LLM.
+  - Pre-lookup LLM guardrail classifier evaluates remaining requests before any CodeGraph lookup or chat generation runs: when `LLM_PROVIDER=gemini` it calls the dedicated **`gemini-decision-1`** model via the Gemini Decisions API (`POST /v1beta/decisions`, separate from `LLM_MODEL`), and when `LLM_PROVIDER=openai` it calls the configured OpenAI **`LLM_MODEL`**.
+  - Hardened read-only system instructions and a post-LLM output filter block fenced code blocks and raw scripts/SQL before saving replies.
+- SQLite `BEFORE UPDATE` and `BEFORE DELETE` triggers protect `chats` and `messages` as append-only (the sole exception is explicit admin project deletion with `deleteChats: true`, executed inside a single atomic transaction that immediately restores the triggers).
+- Back up SQLite regularly using SQLite's online backup command while running, or stop the service before copying the database files.
 
 ## Project structure
 
 ```text
-.env.example     Runtime configuration template
-.gitignore       Local config, database data, and index exclusions
-package.json     Start and account-creation commands
-package-lock.json Pinned Markdown parser dependencies
-README.md        Setup and operations
+.env.example            Runtime configuration template
+.gitignore              Local config, database data, and index exclusions
+package.json            Start, account-creation, and test commands
+package-lock.json       Pinned Markdown parser dependencies
+README.md               Setup and operations
 public/
-  login.html     Client sign-in
-  index.html     Conversation workspace
-  app.css        Responsive styles
-  app.js         Message submission, history, and status updates
-  theme.js       Dark and light appearance preference
+  login.html            Sign-in page
+  index.html            Client ChatGPT-style multi-project workspace
+  admin.html            Admin dashboard (Clients, Projects, History)
+  app.css               Shared responsive styles & theme tokens
+  app.js                Client workspace & login behavior
+  admin.js              Admin dashboard client
+  markdown.js           Shared safe markdown-it configuration
+  theme.js              Dark and light appearance preference
 src/
-  server.js      HTTP routes, sessions, and conversation handling
-  auth.js        Password and session hashing
-  create-user.js Admin account-creation CLI
-  db.js          SQLite initialization
-  schema.sql     Users, sessions, conversations, and append-only messages
-  codegraph.js   Local CodeGraph MCP connection
-  llm.js         Provider adapters and required tool lookup
+  server.js             Process entrypoint and graceful shutdown
+  app.js                HTTP routes, auth/role guards, admin & chat APIs
+  auth.js               Password and session hashing
+  create-user.js        CLI for bootstrapping admins and creating users
+  db.js                 SQLite initialization
+  schema.sql            Base SQLite tables and append-only triggers
+  migrations.js         Transactional PRAGMA user_version migrations
+  paths.js              PROJECTS_BASE_DIR realpath containment checks
+  codegraph.js          JSON-RPC CodeGraph MCP client
+  codegraph-cli.js      Safe async status / init / sync runner with locking
+  codegraph-manager.js  Bounded LRU / idle-evicting per-project MCP pool
+  llm.js                OpenAI and Gemini adapters with required tool lookup
+test/                   node:test integration & hardening test suite
 ```

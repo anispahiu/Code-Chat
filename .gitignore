@@ -4,3 +4,6 @@
 /.codegraph/
 /data/
 /node_modules/
+AGENTS.md
+docs/
+test/

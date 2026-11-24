@@ -2,26 +2,50 @@ import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { buildSafeEnv } from './codegraph-cli.js';
 
 const protocolVersion = '2024-11-05';
 
 function connect(binary, root) {
-  const { PATH, HOME, USERPROFILE, XDG_CACHE_HOME, XDG_RUNTIME_DIR, TMPDIR } = process.env;
   const child = spawn(binary, ['serve', '--mcp', '--no-telemetry', '--path', root], {
     cwd: root,
-    env: { PATH, HOME, USERPROFILE, XDG_CACHE_HOME, XDG_RUNTIME_DIR, TMPDIR },
+    env: buildSafeEnv(),
     stdio: ['pipe', 'pipe', 'inherit'],
+    shell: false,
   });
   const pending = new Map();
   let nextId = 0;
   let closed = false;
+  let exited = false;
+  let exitPromise;
+
+  const rl = createInterface({ input: child.stdout });
+
+  exitPromise = new Promise((resolve) => {
+    const finish = () => {
+      exited = true;
+      resolve();
+    };
+    child.once('exit', finish);
+    child.once('error', finish);
+  });
 
   function close(error = new Error('CodeGraph connection closed')) {
-    if (closed) return;
-    closed = true;
-    for (const { reject } of pending.values()) reject(error);
-    pending.clear();
-    child.kill();
+    if (!closed) {
+      closed = true;
+      rl.close();
+      for (const { reject } of pending.values()) reject(error);
+      pending.clear();
+      if (!exited) {
+        child.kill('SIGTERM');
+        const forceTimer = setTimeout(() => {
+          if (!exited) child.kill('SIGKILL');
+        }, 5_000);
+        forceTimer.unref();
+        exitPromise.finally(() => clearTimeout(forceTimer));
+      }
+    }
+    return exitPromise;
   }
 
   child.on('error', close);
@@ -29,7 +53,7 @@ function connect(binary, root) {
   child.stdin.on('error', close);
   child.stdout.on('end', () => close());
 
-  createInterface({ input: child.stdout }).on('line', (line) => {
+  rl.on('line', (line) => {
     let message;
     try {
       message = JSON.parse(line);
@@ -77,11 +101,21 @@ function connect(binary, root) {
   return { send, close, get closed() { return closed; } };
 }
 
-export function createCodeGraph(root, binary) {
+export function createCodeGraph(root, binary = 'codegraph') {
   let connection;
   let ready;
-  async function start() {
+
+  async function ensureIndex() {
+    try {
+      await access(join(root, '.codegraph', 'codegraph.db'));
+    } catch {
+      throw new Error('CodeGraph index missing. Initialize the project index first.');
+    }
+  }
+
+  async function startInternal() {
     if (connection && !connection.closed) return ready;
+    await ensureIndex();
     connection = connect(binary, root);
     const current = connection;
     ready = (async () => {
@@ -106,16 +140,18 @@ export function createCodeGraph(root, binary) {
 
   return {
     async start() {
-      try {
-        await access(join(root, '.codegraph', 'codegraph.db'));
-      } catch {
-        throw new Error('CodeGraph index missing. Run codegraph init --yes --local-only on REPO_PATH.');
-      }
-      await start();
+      await startInternal();
     },
-    close() { connection?.close(); },
+    async close() {
+      if (connection) {
+        const current = connection;
+        connection = null;
+        ready = null;
+        await current.close();
+      }
+    },
     async explore(query) {
-      const current = await start();
+      const current = await startInternal();
       const result = await current.send('tools/call', {
         name: 'codegraph_explore',
         arguments: { query },

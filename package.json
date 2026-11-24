@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
-    "create-user": "node --env-file-if-exists=.env src/create-user.js"
+    "create-user": "node --env-file-if-exists=.env src/create-user.js",
+    "test": "node --test"
   },
   "dependencies": {
     "markdown-it": "15.0.3"

@@ -9,17 +9,20 @@
   <link rel="stylesheet" href="/app.css">
   <script src="/app.js" type="module"></script>
 </head>
-<body class="workspace">
-  <aside class="sidebar" id="sidebar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Code Chat</div>
-    <a class="button new-chat" href="/" data-conversation><span class="plus" aria-hidden="true"></span>New conversation</a>
-    <nav class="history" aria-labelledby="history-title">
-      <h2 id="history-title">Conversations</h2>
-      <p id="history-empty" hidden>No saved conversations yet.</p>
-      <ul id="history-list"></ul>
+<body class="workspace" id="workspace">
+  <aside class="sidebar" id="sidebar" aria-label="Projects and conversations">
+    <div class="sidebar-top">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Code Chat</div>
+      <a class="button new-chat" id="new-chat" href="/" data-new-chat><span class="plus" aria-hidden="true"></span>New chat</a>
+    </div>
+    <nav class="history projects-nav" id="projects-nav" aria-labelledby="projects-nav-title">
+      <h2 id="projects-nav-title">Projects</h2>
+      <p id="projects-empty" hidden>No projects assigned yet.</p>
+      <ul id="projects-tree" class="projects-tree"></ul>
     </nav>
     <form class="account" method="post" action="/api/logout" aria-label="Your account">
-      <span id="account-email"></span>
+      <span id="account-name" class="account-name"></span>
+      <span id="account-email" class="account-email"></span>
       <div class="account-actions">
         <button type="button" class="text-button" id="theme-toggle" hidden>Light mode</button>
         <button type="submit" class="text-button">Sign out</button>
@@ -28,15 +31,18 @@
   </aside>
   <main class="main" id="main">
     <header class="toolbar">
-      <h1 id="conversation-title" tabindex="-1">Codebase assistant</h1>
-      <button class="outline mobile-history" id="history-toggle" type="button" aria-controls="sidebar" aria-expanded="false">History</button>
+      <div class="toolbar-leading">
+        <button class="outline compact sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Toggle sidebar">Menu</button>
+        <h1 id="conversation-title" tabindex="-1">Code Chat</h1>
+      </div>
+      <span id="project-state-badge" class="badge" hidden></span>
     </header>
     <div class="feed" id="feed">
       <section class="welcome chat-content" id="welcome">
         <span class="welcome-mark" aria-hidden="true"><span class="brand-mark"></span></span>
-        <h2>What would you like to know?</h2>
-        <p>Ask how your application works, from everyday tasks to the rules behind them.</p>
-        <div class="suggestions" aria-label="Example questions">
+        <h2 id="welcome-title">What would you like to know?</h2>
+        <p id="welcome-description">Select a project to ask how your application works, from everyday tasks to the rules behind them.</p>
+        <div class="suggestions" id="suggestions" aria-label="Example questions">
           <button class="outline" type="button">How does sign-in work?</button>
           <button class="outline" type="button">What can users do in the app?</button>
         </div>
@@ -47,12 +53,12 @@
       <p class="visually-hidden" id="reply-status" role="status"></p>
       <div class="feedback">
         <p id="chat-status" class="notice" role="status"></p>
-        <button type="button" id="retry" class="outline" hidden>Try again</button>
+        <button type="button" id="retry" class="outline compact" hidden>Try again</button>
       </div>
       <form id="composer" class="composer" method="post" action="/api/chats" aria-label="Ask a question">
         <div class="question-field">
           <label for="question">Your question</label>
-          <textarea id="question" name="message" rows="2" maxlength="4000" placeholder="Ask about your application…" required></textarea>
+          <textarea id="question" name="message" rows="2" maxlength="4000" placeholder="Ask how this application works…" required></textarea>
         </div>
         <button class="button primary" id="send" type="submit">Send</button>
       </form>

@@ -17,6 +17,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     const toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
     function updateLabel() {
       toggle.textContent = root.dataset.theme === 'light' ? 'Dark mode' : 'Light mode';
     }
